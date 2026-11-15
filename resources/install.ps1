@@ -7,7 +7,7 @@ param(
 $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-function Invoke-Spicetify {
+function Invoke-Spotifast {
     param (
         [Parameter(Mandatory = $true, Position = 0, ValueFromRemainingArguments = $true)]
         [string[]]$Arguments
@@ -23,7 +23,7 @@ function Invoke-Spicetify {
     return $LASTEXITCODE
 }
 
-function Invoke-SpicetifyWithOutput {
+function Invoke-SpotifastWithOutput {
     param (
         [Parameter(Mandatory = $true, Position = 0, ValueFromRemainingArguments = $true)]
         [string[]]$Arguments
@@ -55,7 +55,7 @@ if (-not (Get-Command -Name 'spicetify' -ErrorAction 'SilentlyContinue')) {
 }
 
 try {
-    $result = Invoke-SpicetifyWithOutput "path" "userdata"
+    $result = Invoke-SpotifastWithOutput "path" "userdata"
     if ($result.ExitCode -ne 0) {
         Write-Host -Object "Error from Spicetify:" -ForegroundColor 'Red'
         Write-Host -Object $result.Output -ForegroundColor 'Red'
@@ -75,15 +75,15 @@ $marketAppPath = "$spiceUserDataPath\CustomApps\marketplace"
 $marketThemePath = "$spiceUserDataPath\Themes\marketplace"
 
 $isThemeInstalled = $(
-    Invoke-Spicetify "path" "-s" | Out-Null
+    Invoke-Spotifast "path" "-s" | Out-Null
     -not $LASTEXITCODE
 )
-$currentTheme = (Invoke-SpicetifyWithOutput "config" "current_theme").Output
+$currentTheme = (Invoke-SpotifastWithOutput "config" "current_theme").Output
 $setTheme = $true
 
 Write-Host -Object 'Removing and creating Marketplace folders...' -ForegroundColor 'Cyan'
 try {
-    $result = Invoke-SpicetifyWithOutput "path" "userdata"
+    $result = Invoke-SpotifastWithOutput "path" "userdata"
     if ($result.ExitCode -ne 0) {
         Write-Host -Object "Error: Failed to get Spicetify path. Details:" -ForegroundColor 'Red'
         Write-Host -Object $result.Output -ForegroundColor 'Red'
@@ -117,9 +117,9 @@ $unpackedFolderPath = (Get-ChildItem -Path $unpackTemp -Directory | Select-Objec
 if (-not $unpackedFolderPath) { throw "Marketplace archive has no top-level folder" }
 Move-Item -Path "$unpackedFolderPath\*" -Destination $marketAppPath -Force
 Remove-Item -Path $marketArchivePath, $unpackTemp -Recurse -Force
-Invoke-Spicetify "config" "custom_apps" "spicetify-marketplace-" "-q"
-Invoke-Spicetify "config" "custom_apps" "marketplace"
-Invoke-Spicetify "config" "inject_css" "1" "replace_colors" "1"
+Invoke-Spotifast "config" "custom_apps" "spicetify-marketplace-" "-q"
+Invoke-Spotifast "config" "custom_apps" "marketplace"
+Invoke-Spotifast "config" "inject_css" "1" "replace_colors" "1"
 
 Write-Host -Object 'Downloading placeholder theme...' -ForegroundColor 'Cyan'
 $Parameters = @{
@@ -141,10 +141,10 @@ if ($isThemeInstalled -and ($currentTheme -ne 'marketplace')) {
     if ($choice = 1) { $setTheme = $false }
 }
 if ($setTheme) {
-    Invoke-Spicetify "config" "current_theme" "marketplace"
+    Invoke-Spotifast "config" "current_theme" "marketplace"
 }
-Invoke-Spicetify "backup"
-Invoke-Spicetify "apply"
+Invoke-Spotifast "backup"
+Invoke-Spotifast "apply"
 
 Write-Host -Object 'Done!' -ForegroundColor 'Green'
 Write-Host -Object 'If nothing has happened, check the messages above for errors'

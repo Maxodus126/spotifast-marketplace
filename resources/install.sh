@@ -60,10 +60,10 @@ cd "$INSTALL_DIR/marketplace"
 spotifast config custom_apps spicetify-marketplace-
 
 # Color injection fix
-spicetify config inject_css 1
-spicetify config replace_colors 1
+spotifast config inject_css 1
+spotifast config replace_colors 1
 
-current_theme=$(spicetify config current_theme)
+current_theme=$(spotifast config current_theme)
 if [ ${#current_theme} -le 3 ]; then
     echo "No theme selected, using placeholder theme"
     if [ ! -d "$SPICETIFY_CONFIG_DIR/Themes/marketplace" ]; then
@@ -71,17 +71,17 @@ if [ ${#current_theme} -le 3 ]; then
         mkdir -p "$SPICETIFY_CONFIG_DIR/Themes/marketplace"
     fi
     curl --fail --location --progress-bar --output "$SPICETIFY_CONFIG_DIR/Themes/marketplace/color.ini" "$default_color_uri"
-    spicetify config current_theme marketplace;
+    spotifast config current_theme marketplace;
 fi
 
-if spicetify config custom_apps marketplace ; then
+if spotifast config custom_apps marketplace ; then
     echo "Added to config!"
     echo "APPLYING"
-    spicetify apply
+    spotifast apply
 else
     echo "Command failed"
-    echo "Please run \`spicetify config custom_apps marketplace\` manually "
-    echo "Next run \`spicetify apply\`"
+    echo "Please run \`spotifast config custom_apps marketplace\` manually "
+    echo "Next run \`spotifast apply\`"
 fi
 
 echo "CLEANING UP"
