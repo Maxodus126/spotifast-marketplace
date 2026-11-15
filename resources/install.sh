@@ -34,7 +34,7 @@ if [ ! -d "$INSTALL_DIR" ]; then
     mkdir -p "$INSTALL_DIR"
 fi
 
-TAR_FILE="$INSTALL_DIR/marketplace-dist.zip"
+TAR_FILE="$INSTALL_DIR/marketplace.zip"
 
 echo "DOWNLOADING $download_uri"
 curl --fail --location --progress-bar --output "$TAR_FILE" "$download_uri"
@@ -43,16 +43,21 @@ cd "$INSTALL_DIR"
 echo "EXTRACTING"
 unzip -q -d "$INSTALL_DIR/marketplace-tmp" -o "$TAR_FILE"
 
-cd "$INSTALL_DIR/marketplace-tmp"
+# Release zip contains a single *-dist folder; find it instead of hardcoding the name
+DIST_DIR=$(find "$INSTALL_DIR/marketplace-tmp" -maxdepth 1 -type d ! -path "$INSTALL_DIR/marketplace-tmp" | head -n 1)
+if [ -z "$DIST_DIR" ]; then
+    echo "Marketplace archive has no top-level folder" >&2
+    exit 1
+fi
 echo "COPYING"
-rm -rf "$INSTALL_DIR/marketplace/" "$INSTALL_DIR/marketplace/"
-mv "$INSTALL_DIR/marketplace-tmp/marketplace-dist" "$INSTALL_DIR/marketplace"
+rm -rf "$INSTALL_DIR/marketplace/"
+mv "$DIST_DIR" "$INSTALL_DIR/marketplace"
 
 echo "INSTALLING"
 cd "$INSTALL_DIR/marketplace"
 
 # Remove old custom app name if exists
-spicetify config custom_apps spicetify-marketplace-
+spotifast config custom_apps spicetify-marketplace-
 
 # Color injection fix
 spicetify config inject_css 1

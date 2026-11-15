@@ -102,7 +102,7 @@ try {
 
 Write-Host -Object 'Downloading Marketplace...' -ForegroundColor 'Cyan'
 $marketArchivePath = "$marketAppPath\marketplace.zip"
-$unpackedFolderPath = "$marketAppPath\marketplace-dist"
+$unpackTemp = "$marketAppPath\_unpack"
 $Parameters = @{
   Uri             = 'https://github.com/Maxodus126/spotifast-marketplace/releases/latest/download/marketplace.zip'
   UseBasicParsing = $true
@@ -111,9 +111,12 @@ $Parameters = @{
 Invoke-WebRequest @Parameters
 
 Write-Host -Object 'Unzipping and installing...' -ForegroundColor 'Cyan'
-Expand-Archive -Path $marketArchivePath -DestinationPath $marketAppPath -Force
+Expand-Archive -Path $marketArchivePath -DestinationPath $unpackTemp -Force
+# Release zip contains a single *-dist folder; find it instead of hardcoding the name
+$unpackedFolderPath = (Get-ChildItem -Path $unpackTemp -Directory | Select-Object -First 1).FullName
+if (-not $unpackedFolderPath) { throw "Marketplace archive has no top-level folder" }
 Move-Item -Path "$unpackedFolderPath\*" -Destination $marketAppPath -Force
-Remove-Item -Path $marketArchivePath, $unpackedFolderPath -Force
+Remove-Item -Path $marketArchivePath, $unpackTemp -Recurse -Force
 Invoke-Spicetify "config" "custom_apps" "spicetify-marketplace-" "-q"
 Invoke-Spicetify "config" "custom_apps" "marketplace"
 Invoke-Spicetify "config" "inject_css" "1" "replace_colors" "1"
