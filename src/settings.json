@@ -1,0 +1,9 @@
+{
+  "displayName": {
+    "en": "Spotifast Marketplace",
+    "ru": "Маркетплейс Spotifast"
+  },
+  "nameId": "spotifast-marketplace",
+  "icon": "assets/icon.svg",
+  "activeIcon": "assets/icon-filled.svg"
+}
