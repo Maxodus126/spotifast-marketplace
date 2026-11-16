@@ -19,7 +19,7 @@ function Invoke-Spotifast {
     }
     $spicetifyArgs += $Arguments
     
-    & spicetify $spicetifyArgs
+    & spotifast $spicetifyArgs
     return $LASTEXITCODE
 }
 
@@ -35,7 +35,7 @@ function Invoke-SpotifastWithOutput {
     }
     $spicetifyArgs += $Arguments
     
-    $output = (& spicetify $spicetifyArgs 2>&1 | Out-String).Trim()
+    $output = (& spotifast $spicetifyArgs 2>&1 | Out-String).Trim()
     return @{
         Output = $output
         ExitCode = $LASTEXITCODE
@@ -44,11 +44,11 @@ function Invoke-SpotifastWithOutput {
 
 Write-Host -Object 'Setting up...' -ForegroundColor 'Cyan'
 
-if (-not (Get-Command -Name 'spicetify' -ErrorAction 'SilentlyContinue')) {
-    Write-Host -Object 'Spicetify not found.' -ForegroundColor 'Yellow'
+if (-not (Get-Command -Name 'spotifast' -ErrorAction 'SilentlyContinue')) {
+    Write-Host -Object 'Spotifast not found.' -ForegroundColor 'Yellow'
     Write-Host -Object 'Installing it for you...' -ForegroundColor 'Cyan'
     $Parameters = @{
-        Uri             = 'https://raw.githubusercontent.com/spicetify/cli/main/install.ps1'
+        Uri             = 'https://raw.githubusercontent.com/Maxodus126/Spotifast/main/install.ps1'
         UseBasicParsing = $true
     }
     Invoke-WebRequest @Parameters | Invoke-Expression
@@ -132,13 +132,17 @@ Invoke-WebRequest @Parameters
 Write-Host -Object 'Applying...' -ForegroundColor 'Cyan'
 if ($isThemeInstalled -and ($currentTheme -ne 'marketplace')) {
     $Host.UI.RawUI.Flushinputbuffer()
+    $themeChoices = [System.Management.Automation.Host.ChoiceDescription[]] @(
+        (New-Object System.Management.Automation.Host.ChoiceDescription '&Yes', 'Replace the local theme.'),
+        (New-Object System.Management.Automation.Host.ChoiceDescription '&No',  'Keep the local theme.')
+    )
     $choice = $Host.UI.PromptForChoice(
         'Local theme found',
         'Do you want to replace it with a placeholder to install themes from the Marketplace?',
-        ('&Yes', '&No'),
+        $themeChoices,
         0
     )
-    if ($choice = 1) { $setTheme = $false }
+    if ($choice -eq 1) { $setTheme = $false }
 }
 if ($setTheme) {
     Invoke-Spotifast "config" "current_theme" "marketplace"
