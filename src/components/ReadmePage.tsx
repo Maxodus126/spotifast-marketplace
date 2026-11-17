@@ -1,6 +1,6 @@
 import React from "react";
 import { withTranslation } from "react-i18next";
-import { getMarkdownHTML } from "../logic/Utils";
+import { getMarkdownHTML, isSafeExternalUrl, sanitizeHtml } from "../logic/Utils";
 import type { CardType } from "../types/marketplace-types";
 import Button from "./Button";
 import DownloadIcon from "./Icons/DownloadIcon";
@@ -40,6 +40,12 @@ class ReadmePage extends React.Component<
   };
 
   getReadmeHTML = async () => {
+    // Only fetch allowlisted https readme URLs; render nothing otherwise.
+    if (!isSafeExternalUrl(this.props.data.readmeURL)) {
+      console.warn("Blocked unsafe readme URL:", this.props.data.readmeURL);
+      return "";
+    }
+
     return fetch(this.props.data.readmeURL)
       .then((res) => {
         if (!res.ok) throw Spicetify.showNotification(`${this.props.t("readmePage.errorLoading")} (HTTP ${res.status})`, true);
@@ -154,7 +160,11 @@ class ReadmePage extends React.Component<
             <LoadingIcon />
           </footer>
         ) : (
-          <div id="marketplace-readme" className="marketplace-readme__container" dangerouslySetInnerHTML={{ __html: this.state.html }} />
+          <div
+            id="marketplace-readme"
+            className="marketplace-readme__container"
+            dangerouslySetInnerHTML={{ __html: sanitizeHtml(this.state.html) }}
+          />
         )}
       </section>
     );

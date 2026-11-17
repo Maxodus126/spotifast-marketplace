@@ -34,19 +34,29 @@ const SettingsModal = ({ CONFIG, updateAppConfig }: Props) => {
     setTimeout(() => setVersionButtonText(t("settings.versionBtn")), 3000);
   };
 
-  // Can't use proper event listener here because it's just the DOM outside the component
-  const closeButton = document.querySelector("body > generic-modal button.main-trackCreditsModal-closeBtn") as HTMLElement;
-  const modalOverlay = document.querySelector("body > generic-modal > div") as HTMLElement;
-  if (closeButton && modalOverlay) {
-    closeButton.onclick = () => location.reload();
-    closeButton.setAttribute("style", "cursor: pointer;");
-    modalOverlay.onclick = (e) => {
+  // These live on the DOM outside the component, so attach them once per modal
+  // lifecycle with proper cleanup instead of clobbering global handlers every render.
+  React.useEffect(() => {
+    const closeButton = document.querySelector("body > generic-modal button.main-trackCreditsModal-closeBtn") as HTMLElement | null;
+    const modalOverlay = document.querySelector("body > generic-modal > div") as HTMLElement | null;
+
+    const onClose = () => location.reload();
+    const onOverlay = (e: MouseEvent) => {
       // If clicked on overlay, also reload
-      if (e.target === modalOverlay) {
-        location.reload();
-      }
+      if (e.target === modalOverlay) location.reload();
     };
-  }
+
+    if (closeButton) {
+      closeButton.addEventListener("click", onClose);
+      closeButton.setAttribute("style", "cursor: pointer;");
+    }
+    if (modalOverlay) modalOverlay.addEventListener("click", onOverlay);
+
+    return () => {
+      if (closeButton) closeButton.removeEventListener("click", onClose);
+      if (modalOverlay) modalOverlay.removeEventListener("click", onOverlay);
+    };
+  }, []);
 
   const AlbumArtColorDropDowns = getLocalStorageDataFromKey(LOCALSTORAGE_KEYS.albumArtBasedColor) ? (
     <>

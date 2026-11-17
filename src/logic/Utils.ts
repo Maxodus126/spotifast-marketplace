@@ -58,6 +58,75 @@ export const isBlacklisted = (url: string, blacklist: string[]): boolean => {
   return blacklist.some((pattern) => matchesBlacklistPattern(url, pattern));
 };
 
+const SAFE_EXTERNAL_HOSTS = new Set([
+  "raw.githubusercontent.com",
+  "github.com",
+  "cdn.jsdelivr.net",
+  "api.github.com",
+  "user-images.githubusercontent.com",
+  "avatars.githubusercontent.com"
+]);
+
+/**
+ * Check whether a manifest-controlled URL is safe for Marketplace to fetch or load.
+ * Requires an `https:` scheme and a host on the allowlist (case-insensitive),
+ * including any subdomain of `jsdelivr.net`. Everything else (http:, localhost,
+ * private IPs, etc.) is rejected.
+ */
+export const isSafeExternalUrl = (url: string): boolean => {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+
+  if (parsed.protocol !== "https:") return false;
+
+  const host = parsed.hostname.toLowerCase();
+  if (SAFE_EXTERNAL_HOSTS.has(host)) return true;
+  // Wildcard allowlist entry: *.jsdelivr.net
+  if (host.endsWith(".jsdelivr.net")) return true;
+  return false;
+};
+
+const UNSAFE_HTML_TAGS = ["script", "iframe", "style", "object", "embed", "link", "meta", "base"] as const;
+const UNSAFE_URL_SCHEMES = /^(javascript|data|vbscript):/i;
+
+/**
+ * Minimal dependency-free HTML sanitizer. Strips script/iframe/style/object/
+ * embed/link/meta/base tags (including their content), removes `on*` event
+ * handler attributes, and rewrites `javascript:`/`data:`/`vbscript:` URLs in
+ * `href`/`src` attributes to `#`.
+ */
+export const sanitizeHtml = (html: string): string => {
+  let doc: Document;
+  try {
+    doc = new DOMParser().parseFromString(html, "text/html");
+  } catch {
+    return "";
+  }
+
+  for (const tag of UNSAFE_HTML_TAGS) {
+    doc.querySelectorAll(tag).forEach((el) => {
+      el.remove();
+    });
+  }
+
+  for (const el of Array.from(doc.body.querySelectorAll("*"))) {
+    for (const attr of Array.from(el.attributes)) {
+      const name = attr.name.toLowerCase();
+      if (name.startsWith("on")) {
+        el.removeAttribute(attr.name);
+      } else if ((name === "href" || name === "src") && UNSAFE_URL_SCHEMES.test(attr.value.trim())) {
+        el.setAttribute(attr.name, "#");
+      }
+    }
+  }
+
+  return doc.body.innerHTML;
+};
+
 /**
  * Convert hexadeciaml string to rgb values
  * @param hex 3 or 6 character hex string
@@ -392,7 +461,7 @@ export const injectUserCSS = (userCSS?: string) => {
       const originalUserThemeCSS = document.createElement("link");
       originalUserThemeCSS.setAttribute("rel", "stylesheet");
       originalUserThemeCSS.setAttribute("href", "user.css");
-      originalUserThemeCSS.classList.add("userCSS");
+      originalUserThemeCSS.classList.add("userCSS", "marketplaceCSS");
       document.body.appendChild(originalUserThemeCSS);
     }
   } catch (error) {
@@ -403,10 +472,16 @@ export const injectUserCSS = (userCSS?: string) => {
 // I guess this is okay to not have an end condition on the interval
 // because if they turn the setting on or off,
 // closing the settings modal will reload the page
+let colorShiftInterval: ReturnType<typeof setInterval> | null = null;
+
 export const initColorShiftLoop = (schemes: SchemeIni) => {
+  // Clear any previous loop so intervals don't accumulate across re-invocations
+  // (theme switch, re-init, etc.).
+  if (colorShiftInterval !== null) clearInterval(colorShiftInterval);
+
   let i = 0;
   const NUM_SCHEMES = Object.keys(schemes).length;
-  setInterval(() => {
+  colorShiftInterval = setInterval(() => {
     // Resets to zero when passes the last scheme
     i = i % NUM_SCHEMES;
     injectColourScheme(Object.values(schemes)[i]);
@@ -529,6 +604,12 @@ export const parseCSS = async (themeData: CardItem, defaultTld?: string) => {
     : themeData.cssURL;
   // TODO: Make this more versatile
   const assetsUrl = userCssUrl.replace("/user.css", "/assets/");
+
+  // Only fetch allowlisted https URLs; treat anything else as empty.
+  if (!isSafeExternalUrl(userCssUrl)) {
+    console.warn(`Blocked unsafe theme CSS URL: ${userCssUrl}`);
+    return "";
+  }
 
   console.debug("Parsing CSS: ", userCssUrl);
   const response = await fetch(`${userCssUrl}?time=${Date.now()}`);
@@ -697,9 +778,13 @@ export function generateKey(props: CardProps) {
 }
 
 export const sanitizeUrl = (url: string) => {
-  const u = decodeURI(url).trim().toLowerCase();
-  if (u.startsWith("javascript:") || u.startsWith("data:") || u.startsWith("vbscript:")) return "about:blank";
-  return url;
+  try {
+    const parsed = new URL(decodeURI(url).trim());
+    if (parsed.protocol === "http:" || parsed.protocol === "https:") return url;
+  } catch {
+    // Malformed URL (control bytes, NUL, double-encoding) falls through to the fallback.
+  }
+  return "about:blank";
 };
 
 export const addExtensionToSpicetifyConfig = (main?: string) => {

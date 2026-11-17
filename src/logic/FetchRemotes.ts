@@ -56,7 +56,7 @@ function trimRepoSearchItem(repo: RepoSearchItem): RepoSearchItem {
  * @param page The query page number
  * @returns Array of search results (filtered through the blacklist)
  */
-export async function getTaggedRepos(tag: RepoTopic, page = 1, BLACKLIST: string[] = [], showArchived = false, sortMode = "stars") {
+export async function getTaggedRepos(tag: RepoTopic, page = 1, BLACKLIST: string[] = [], showArchived = false, sortMode = "stars", silent = false) {
   // www is needed or it will block with "cross-origin" error.
   let url = `https://api.github.com/search/repositories?q=${encodeURIComponent(`topic:${tag}`)}&per_page=${ITEMS_PER_REQUEST}${githubSortParams(sortMode)}`;
 
@@ -74,7 +74,7 @@ export async function getTaggedRepos(tag: RepoTopic, page = 1, BLACKLIST: string
       .catch(() => null));
 
   if (!allRepos?.items) {
-    Spicetify.showNotification(t("notifications.tooManyRequests"), true, 5000);
+    if (!silent) Spicetify.showNotification(t("notifications.tooManyRequests"), true, 5000);
     return { total_count: 0, page_count: 0, items: [] };
   }
 

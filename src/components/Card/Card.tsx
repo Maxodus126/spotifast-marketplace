@@ -5,7 +5,17 @@ import { withTranslation } from "react-i18next";
 import { CUSTOM_APP_PATH, LOCALSTORAGE_KEYS, SNIPPETS_PAGE_URL } from "../../constants";
 import { openModal } from "../../logic/LaunchModals";
 import { marketplaceStorage } from "../../logic/Storage";
-import { generateKey, getLocalStorageDataFromKey, initializeSnippets, injectUserCSS, parseCSS, parseIni } from "../../logic/Utils";
+import {
+  generateKey,
+  getLocalStorageDataFromKey,
+  getParamsFromGithubRaw,
+  initializeSnippets,
+  injectUserCSS,
+  isGithubRawUrl,
+  isSafeExternalUrl,
+  parseCSS,
+  parseIni
+} from "../../logic/Utils";
 import type { CardItem, CardType, Config, SchemeIni, Snippet, VisualConfig } from "../../types/marketplace-types";
 import Button from "../Button";
 import DownloadIcon from "../Icons/DownloadIcon";
@@ -16,6 +26,8 @@ import AuthorsDiv from "./AuthorsDiv";
 import TagsDiv from "./TagsDiv";
 
 const Spicetify = window.Spicetify;
+
+const TRANSPARENT_PIXEL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII";
 
 function readStoredStringArray(value: string | undefined): string[] {
   if (!value) return [];
@@ -49,6 +61,30 @@ function queueThemeOperation<T>(operation: () => Promise<T>) {
     () => undefined
   );
   return result;
+}
+
+// Limit concurrent GitHub API refreshes from installed cards.
+const MAX_CONCURRENT_REFRESHES = 3;
+let activeRefreshes = 0;
+const refreshWaiters: (() => void)[] = [];
+
+function releaseRefreshSlot() {
+  const next = refreshWaiters.shift();
+  if (next) next();
+}
+
+async function withRefreshSlot<T>(fn: () => Promise<T>): Promise<T> {
+  if (activeRefreshes < MAX_CONCURRENT_REFRESHES) {
+    activeRefreshes++;
+    try {
+      return await fn();
+    } finally {
+      activeRefreshes--;
+      releaseRefreshSlot();
+    }
+  }
+  await new Promise<void>((resolve) => refreshWaiters.push(resolve));
+  return withRefreshSlot(fn);
 }
 
 export type CardProps = {
@@ -142,33 +178,30 @@ export class Card extends React.Component<
   }
 
   async refreshInstalledItem() {
-    // Refresh stars if on "Installed" tab with stars enabled
-    if (this.props.CONFIG.activeTab === "Installed" && this.props.type !== "snippet") {
-      // https://docs.github.com/en/rest/reference/repos#get-a-repository
-      const url = `https://api.github.com/repos/${this.props.item.user}/${this.props.item.repo}`;
-      // TODO: This implementation could probably be improved.
-      // It might have issues when quickly switching between tabs.
-      const response = await fetch(url);
-      if (!response.ok) return;
-      const { stargazers_count, pushed_at } = await response.json();
-      if (!this.isInstalled()) return;
-
-      const stars = this.props.CONFIG.visual.stars ? stargazers_count : this.state.stars;
-      const hasUpdate = this.state.lastUpdated !== pushed_at;
-      this.setState({ stars, lastUpdated: pushed_at });
-      if (!hasUpdate) return;
-
-      console.debug(`New update pushed at: ${pushed_at}`);
-      const recordMeta = { stars, lastUpdated: pushed_at };
-      switch (this.props.type) {
-        case "extension":
-          await this.installExtension(recordMeta);
-          break;
-        case "theme":
-          await this.installTheme(true, recordMeta);
-          break;
-      }
+    // Only refresh when on the Installed tab, for non-snippets, and when the
+    // stars display is enabled; otherwise skip the GitHub API call entirely.
+    if (this.props.CONFIG.activeTab !== "Installed" || this.props.type === "snippet" || !this.props.CONFIG.visual.stars) {
+      return;
     }
+
+    // https://docs.github.com/en/rest/reference/repos#get-a-repository
+    const url = `https://api.github.com/repos/${this.props.item.user}/${this.props.item.repo}`;
+
+    const response = await withRefreshSlot(() => fetch(url));
+
+    // Treat rate limiting (HTTP 403) as silent so unrelated tabs aren't spammed
+    // with "tooManyRequests" notifications.
+    if (response.status === 403) {
+      console.debug("GitHub API rate limit reached; skipping installed-item refresh");
+      return;
+    }
+    if (!response.ok) return;
+
+    const { stargazers_count, pushed_at } = await response.json();
+    if (!this.isInstalled()) return;
+
+    // Display-only refresh: never auto-reinstall on a mere pushed_at change.
+    this.setState({ stars: stargazers_count, lastUpdated: pushed_at });
   }
 
   async buttonClicked() {
@@ -326,7 +359,8 @@ export class Card extends React.Component<
   async installPreparedTheme(
     { activeScheme, item, parsedSchemes, record, userCSS }: PreparedTheme,
     activeThemeKey: string | null,
-    shouldActivate = true
+    shouldActivate = true,
+    isUpdate = false
   ) {
     const replacedThemeKey = shouldActivate && activeThemeKey !== this.localStorageKey ? activeThemeKey : null;
 
@@ -347,7 +381,11 @@ export class Card extends React.Component<
     console.debug("Installed");
     this.setState({ installed: true });
 
-    if (!shouldActivate || item.include) return;
+    if (!shouldActivate) return;
+
+    // Keep legacy behavior for include-themes on manual install (they rely on the
+    // reload prompt); only proceed to re-inject on an auto-update of an active theme.
+    if (item.include && !isUpdate) return;
 
     injectUserCSS(userCSS);
     // Update the active theme in Grid state, triggers state change and re-render
@@ -360,6 +398,25 @@ export class Card extends React.Component<
     if (name) Spicetify.Config.current_theme = name;
     // @ts-expect-error: Cannot assign to 'color_scheme' because it is a read-only property
     if (activeScheme) Spicetify.Config.color_scheme = activeScheme;
+
+    // Re-inject included scripts (mirrors extension.tsx) so auto-updates take
+    // effect without a full reload.
+    if (item.include?.length) {
+      const tld = window.sessionStorage.getItem("marketplace-request-tld") || "";
+      for (const script of item.include) {
+        const newScript = document.createElement("script");
+        let src = script;
+        if (isGithubRawUrl(script)) {
+          const { user, repo, branch, filePath } = getParamsFromGithubRaw(script);
+          if (!user || !repo || !branch || !filePath) continue;
+          src = `https://cdn.jsdelivr.${tld}/gh/${user}/${repo}@${branch}/${filePath}`;
+          if (filePath.endsWith(".mjs")) newScript.type = "module";
+        }
+        newScript.src = `${src}?time=${Date.now()}`;
+        newScript.classList.add("marketplaceScript");
+        document.body.appendChild(newScript);
+      }
+    }
   }
 
   resetActiveTheme() {
@@ -380,7 +437,7 @@ export class Card extends React.Component<
       const activeThemeKey = marketplaceStorage.getItem(LOCALSTORAGE_KEYS.themeInstalled);
       const shouldActivate = !update || activeThemeKey === this.localStorageKey;
       const preparedTheme = await this.prepareTheme(update, shouldActivate, recordMeta);
-      if (preparedTheme) await this.installPreparedTheme(preparedTheme, activeThemeKey, shouldActivate);
+      if (preparedTheme) await this.installPreparedTheme(preparedTheme, activeThemeKey, shouldActivate, update);
     });
   }
 
@@ -538,7 +595,7 @@ export class Card extends React.Component<
                   aria-hidden="false"
                   draggable="false"
                   loading="lazy"
-                  src={this.props.item.imageURL}
+                  src={this.props.item.imageURL && isSafeExternalUrl(this.props.item.imageURL) ? this.props.item.imageURL : TRANSPARENT_PIXEL}
                   className="main-image-image main-cardImage-image"
                   onError={(e) => {
                     // Set to transparent PNG to remove the placeholder icon

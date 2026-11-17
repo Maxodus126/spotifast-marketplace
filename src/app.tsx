@@ -87,24 +87,35 @@ class App extends React.Component<
       console.error(err);
     }
 
+    // Parse a stored boolean config safely; malformed JSON falls back to the default.
+    const parseBool = (key: string, fallback: boolean): boolean => {
+      const raw = getLocalStorageDataFromKey(key, fallback);
+      if (typeof raw === "boolean") return raw;
+      try {
+        return Boolean(JSON.parse(String(raw)));
+      } catch {
+        return fallback;
+      }
+    };
+
     const config = {
       // Fetch the settings and set defaults. Used in Settings.js
       visual: {
-        stars: JSON.parse(getLocalStorageDataFromKey("marketplace:stars", true)),
-        tags: JSON.parse(getLocalStorageDataFromKey("marketplace:tags", true)),
-        showArchived: JSON.parse(getLocalStorageDataFromKey("marketplace:showArchived", false)),
-        hideInstalled: JSON.parse(getLocalStorageDataFromKey("marketplace:hideInstalled", false)),
-        colorShift: JSON.parse(getLocalStorageDataFromKey("marketplace:colorShift", false)),
-        themeDevTools: JSON.parse(getLocalStorageDataFromKey("marketplace:themeDevTools", false)),
-        albumArtBasedColors: JSON.parse(getLocalStorageDataFromKey("marketplace:albumArtBasedColors", false)),
+        stars: parseBool("marketplace:stars", true),
+        tags: parseBool("marketplace:tags", true),
+        showArchived: parseBool("marketplace:showArchived", false),
+        hideInstalled: parseBool("marketplace:hideInstalled", false),
+        colorShift: parseBool("marketplace:colorShift", false),
+        themeDevTools: parseBool("marketplace:themeDevTools", false),
+        albumArtBasedColors: parseBool("marketplace:albumArtBasedColors", false),
         albumArtBasedColorsMode: getLocalStorageDataFromKey("marketplace:albumArtBasedColorsMode") || "monochrome-light",
         albumArtBasedColorsVibrancy: getLocalStorageDataFromKey("marketplace:albumArtBasedColorsVibrancy") || "PROMINENT",
         // Legacy from reddit app
-        type: JSON.parse(getLocalStorageDataFromKey("marketplace:type", false)),
+        type: parseBool("marketplace:type", false),
         // I was considering adding watchers as "followers" but it looks like the value is a duplicate
         // of stargazers, and the subscribers_count isn't returned in the main API call we make
         // https://github.community/t/bug-watchers-count-is-the-duplicate-of-stargazers-count/140865/4
-        followers: JSON.parse(getLocalStorageDataFromKey("marketplace:followers", false))
+        followers: parseBool("marketplace:followers", false)
       },
       tabs,
       activeTab: getLocalStorageDataFromKey(LOCALSTORAGE_KEYS.activeTab, tabs[0]),

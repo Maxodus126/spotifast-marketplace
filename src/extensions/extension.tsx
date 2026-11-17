@@ -4,7 +4,7 @@
 
 import { t } from "i18next";
 
-import { LOCALSTORAGE_KEYS, MARKETPLACE_VERSION } from "../constants";
+import { CUSTOM_APP_PATH, LOCALSTORAGE_KEYS, MARKETPLACE_VERSION } from "../constants";
 import { fetchAppManifest, fetchExtensionManifest, fetchThemeManifest, getBlacklist, getNextPage, getTaggedRepos } from "../logic/FetchRemotes";
 import { hydrateMarketplaceStorage, marketplaceStorage } from "../logic/Storage";
 import {
@@ -21,7 +21,8 @@ import {
   injectUserCSS,
   isGithubRawUrl,
   parseCSS,
-  resetMarketplace
+  resetMarketplace,
+  sleep
 } from "../logic/Utils";
 import type { RepoType } from "../types/marketplace-types";
 
@@ -211,7 +212,8 @@ async function queryRepos(type: RepoType, pageNum = 1) {
 
   // Go through getTaggedRepos so the request and its sessionStorage cache key match
   // what the Grid asks for, and opening Marketplace reuses these pages.
-  return getTaggedRepos(`spicetify-${type}s`, pageNum, BLACKLIST, true, sortMode);
+  // silent=true keeps GitHub rate-limit (403) failures quiet during preload.
+  return getTaggedRepos(`spicetify-${type}s`, pageNum, BLACKLIST, true, sortMode, true);
 }
 
 /**
@@ -220,19 +222,23 @@ async function queryRepos(type: RepoType, pageNum = 1) {
  * @param pageNum The page number
  * @returns TODO
  */
-async function loadPageRecursive(type: RepoType, pageNum: number) {
-  const pageOfRepos = await queryRepos(type, pageNum);
-  appendInformationToLocalStorage(pageOfRepos, type);
+// Cap the number of pages preloaded so startup stays bounded.
+const MAX_PRELOAD_PAGES = 3;
 
-  console.debug({ pageOfRepos });
-
-  // Shares getNextPage with the Grid, so the preload requests the same pages (and cache keys)
-  const nextPage = getNextPage(pageNum, pageOfRepos);
-  if (nextPage) return await loadPageRecursive(type, nextPage);
-  console.debug(`No more ${type} results`);
+async function waitForMarketplaceOpen(timeoutMs = 60_000): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const path = Spicetify.Platform.History?.location?.pathname;
+    if (typeof path === "string" && path.startsWith(CUSTOM_APP_PATH)) return true;
+    await sleep(1000);
+  }
+  return false;
 }
 
 (async function initializePreload() {
+  // Only preload once Marketplace is actually opened, not on every startup.
+  if (!(await waitForMarketplaceOpen())) return;
+
   console.debug("Preloading extensions and themes...");
   window.sessionStorage.clear();
   const BLACKLIST = await getBlacklist();
@@ -241,24 +247,23 @@ async function loadPageRecursive(type: RepoType, pageNum: number) {
   // init() already reports a failure to the user.
   await hydrateMarketplaceStorage().catch(() => undefined);
 
-  // TODO: does this work?
-  // The recursion isn't super clean...
+  let pagesProcessed = 0;
+  const processType = async (type: RepoType) => {
+    let page = 0;
+    // Stop after MAX_PRELOAD_PAGES pages, and stop early when a page comes back
+    // empty (e.g. GitHub rate-limit), since getNextPage then yields no next page.
+    while (pagesProcessed < MAX_PRELOAD_PAGES) {
+      const pageOfRepos = await queryRepos(type, page);
+      if (pageOfRepos.items?.length) appendInformationToLocalStorage(pageOfRepos, type);
+      pagesProcessed++;
+      const nextPage = getNextPage(page, pageOfRepos);
+      if (!nextPage) break;
+      page = nextPage;
+    }
+    console.debug(`Preload finished for ${type}`);
+  };
 
-  // Begin by getting the themes and extensions from github
-  // const [extensionReposArray, themeReposArray] = await Promise.all([
-  await Promise.all([loadPageRecursive("extension", 0), loadPageRecursive("theme", 0), loadPageRecursive("app", 0)]);
-
-  // let extensionsNextPage = 1;
-  // let themesNextPage = 1;
-  // do {
-  //     extensionReposArray = await loadPage("extension", extensionsNextPage);
-  //     appendInformationToLocalStorage(extensionReposArray, "extension");
-  // } while (extensionsNextPage);
-
-  // do {
-  //     themeReposArray = await loadPage("theme", themesNextPage);
-  //     appendInformationToLocalStorage(themeReposArray, "theme");
-  // } while (themesNextPage);
+  await Promise.all([processType("extension"), processType("theme"), processType("app")]);
 })();
 
 async function appendInformationToLocalStorage(array, type: RepoType) {

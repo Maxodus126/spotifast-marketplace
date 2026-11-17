@@ -2,7 +2,7 @@ import { t } from "i18next";
 import React from "react";
 
 import { LATEST_RELEASE_URL, MARKETPLACE_VERSION, RELEASES_URL } from "../../../constants";
-import { getMarkdownHTML } from "../../../logic/Utils";
+import { getMarkdownHTML, sanitizeHtml } from "../../../logic/Utils";
 
 async function fetchLatestReleaseInfo(): Promise<{
   version: string;
@@ -46,7 +46,7 @@ function UpdateModal(): React.ReactElement {
         <h3 className="marketplace-update-header">{t("updateModal.whatsChanged")}</h3>
         <details>
           <summary>{t("updateModal.seeChangelog")}</summary>
-          <ul dangerouslySetInnerHTML={{ __html: releaseInfo?.changelog ?? "" }} />
+          <ul dangerouslySetInnerHTML={{ __html: sanitizeHtml(releaseInfo?.changelog ?? "") }} />
         </details>
       </div>
       <hr />
