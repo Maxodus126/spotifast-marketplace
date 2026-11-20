@@ -25,7 +25,7 @@ download_uri=$releases_uri/download/v$tag/marketplace.zip
 
 SPICETIFY_CONFIG_DIR="$SPICETIFY_CONFIG"
 if [ -z "$SPICETIFY_CONFIG_DIR" ]; then
-	SPICETIFY_CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/spicetify"
+	SPICETIFY_CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/spotifast"
 fi
 INSTALL_DIR="$SPICETIFY_CONFIG_DIR/CustomApps"
 

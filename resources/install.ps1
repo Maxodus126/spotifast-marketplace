@@ -57,19 +57,19 @@ if (-not (Get-Command -Name 'spotifast' -ErrorAction 'SilentlyContinue')) {
 try {
     $result = Invoke-SpotifastWithOutput "path" "userdata"
     if ($result.ExitCode -ne 0) {
-        Write-Host -Object "Error from Spicetify:" -ForegroundColor 'Red'
+        Write-Host -Object "Error from Spotifast:" -ForegroundColor 'Red'
         Write-Host -Object $result.Output -ForegroundColor 'Red'
         return
     }
     $spiceUserDataPath = $result.Output
 } catch {
-    Write-Host -Object "Error running Spicetify:" -ForegroundColor 'Red'
+    Write-Host -Object "Error running Spotifast:" -ForegroundColor 'Red'
     Write-Host -Object $_.Exception.Message.Trim() -ForegroundColor 'Red'
     return
 }
 
 if (-not (Test-Path -Path $spiceUserDataPath -PathType 'Container' -ErrorAction 'SilentlyContinue')) {
-    $spiceUserDataPath = "$env:APPDATA\spicetify"
+    $spiceUserDataPath = "$env:APPDATA\spotifast"
 }
 $marketAppPath = "$spiceUserDataPath\CustomApps\marketplace"
 $marketThemePath = "$spiceUserDataPath\Themes\marketplace"
@@ -85,7 +85,7 @@ Write-Host -Object 'Removing and creating Marketplace folders...' -ForegroundCol
 try {
     $result = Invoke-SpotifastWithOutput "path" "userdata"
     if ($result.ExitCode -ne 0) {
-        Write-Host -Object "Error: Failed to get Spicetify path. Details:" -ForegroundColor 'Red'
+        Write-Host -Object "Error: Failed to get Spotifast path. Details:" -ForegroundColor 'Red'
         Write-Host -Object $result.Output -ForegroundColor 'Red'
         return
     }

@@ -426,8 +426,13 @@ export const injectColourScheme = (scheme: ColourScheme | null) => {
     let injectStr = ":root {";
     const themeIniKeys = Object.keys(scheme);
     for (const key of themeIniKeys) {
-      injectStr += `--spice-${key}: #${scheme[key]};`;
-      injectStr += `--spice-rgb-${key}: ${hexToRGB(scheme[key])};`;
+      const value = scheme[key];
+      if (typeof value !== "string" || !/^[0-9a-f]{3}(?:[0-9a-f]{3})?$/i.test(value)) {
+        console.warn(`Skipping invalid hex colour for --spice-${key}: "${value}"`);
+        continue;
+      }
+      injectStr += `--spice-${key}: #${value};`;
+      injectStr += `--spice-rgb-${key}: ${hexToRGB(value)};`;
     }
     injectStr += "}";
     schemeTag.innerHTML = injectStr;
